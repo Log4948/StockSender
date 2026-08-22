@@ -1,0 +1,37 @@
+name: Price Alerts
+
+on:
+  schedule:
+    # Every 15 min from 9:30 AM – 4:15 PM ET (EDT = UTC-4), Mon–Fri
+    - cron: '*/15 13-20 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Check price alerts
+        run: python stockSender.py --alerts
+        env:
+          EMAIL_ADDRESS:   ${{ secrets.EMAIL_ADDRESS }}
+          EMAIL_PASSWORD:  ${{ secrets.EMAIL_PASSWORD }}
+          TO_EMAIL:        ${{ secrets.TO_EMAIL }}
+          PHONE_SMS_EMAIL: ${{ secrets.PHONE_SMS_EMAIL }}
+
+      # Commit alert_state.json back so each run remembers what already fired today
+      - name: Save alert state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add alert_state.json
+          git diff --cached --quiet || git commit -m "chore: update alert state [skip ci]"
+          git push
