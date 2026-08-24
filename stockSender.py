@@ -45,20 +45,20 @@ tickers = {
 
 buy_prices = {
     "Nvidia":   187.52,
-    "Google":   278.0,
+    "Google":   320.08,
     "QQQ":      603.0,
     "VYM":      153.0,
     "VTI":      339.0,
-    "Micron":   916,
-    "On Cloud": 32,
-    "EPD":      39,
-    "Walmart":  103,
+    "Micron":   915,
+    "On Cloud": 31.025,
+    "EPD":      38.98,
+    "Walmart":  103.37,
 }
 
 stop_limits = {
-    "Nvidia":   200,
+    "Nvidia":   None,
     "Micron":   None,
-    "Google":   320,
+    "Google":   None,
     "On Cloud": None,
     "EPD":      None,
     "QQQ":      None,
