@@ -2,7 +2,7 @@ name: Daily Market Email
 
 on:
   schedule:
-    - cron: '0 13 * * 1-5'   # 9:00 AM ET (EDT) on weekdays
+    - cron: '30 14 * * 1-5'  # 10:30 AM ET (EDT) / 9:30 AM ET (EST) on weekdays
   workflow_dispatch:           # lets you trigger it manually from GitHub UI
 
 jobs:

@@ -49,7 +49,7 @@ buy_prices = {
     "QQQ":      603.0,
     "VYM":      153.0,
     "VTI":      339.0,
-    "Micron":   916,    # TODO: verify — Micron trades ~$100, did you mean 91.6?
+    "Micron":   916,
     "On Cloud": 32,
     "EPD":      39,
     "Walmart":  103,
@@ -108,7 +108,6 @@ watchlist = {
     "Verizon":         "VZ",
     "Celsius Holdings": "CELH",
     "TSMC":            "TSM",
-    "SK Hynix":        "000660.KS",
     "Rocket Lab":      "RKLB",
     "Mercado Libre":   "MELI",
     "Bloom Energy":    "BE",
@@ -462,6 +461,30 @@ def create_summary_section(portfolio_data, watchlist_data, market_gainers, marke
             html += f"<li><b>{company}</b> ({ticker}) &mdash; {date_str} ({label})</li>"
         html += "</ul>"
 
+    # Portfolio total value and gain/loss
+    total_value = 0.0
+    total_cost  = 0.0
+    for company, stock in portfolio_data.items():
+        shares = share_counts.get(company, 0)
+        price  = stock.get("Price")
+        buy    = buy_prices.get(company)
+        if shares > 0 and isinstance(price, (int, float)):
+            total_value += price * shares
+            if isinstance(buy, (int, float)):
+                total_cost += buy * shares
+
+    if total_value > 0:
+        total_gl     = total_value - total_cost
+        total_gl_pct = (total_gl / total_cost * 100) if total_cost else 0
+        gl_color     = "green" if total_gl >= 0 else "red"
+        html += (
+            "<div style='margin-top:20px; padding:12px 16px; background-color:white; "
+            "border:1px solid #e2e8f0; border-radius:8px; display:flex; gap:40px;'>"
+            f"<span><b>Portfolio Value:</b> ${total_value:,.0f}</span>"
+            f"<span style='color:{gl_color};'><b>Total G/L:</b> ${total_gl:+,.0f} ({total_gl_pct:+.1f}%)</span>"
+            "</div>"
+        )
+
     html += "</div>"
     return html
 
@@ -538,6 +561,10 @@ def create_stock_table(title, stock_dict, include_buy_prices=True):
 
     has_shares      = include_buy_prices and any(share_counts.get(c, 0) > 0 for c in stock_dict)
     has_stop_limits = include_buy_prices and any(stop_limits.get(c) is not None for c in stock_dict)
+    # show alert distance column on watchlist only
+    has_alerts      = (not include_buy_prices) and any(
+        price_alerts.get(s.get("Ticker", "")) for s in stock_dict.values()
+    )
 
     html  = f"<h2 style='color:#1E293B; margin-top:40px;'>{title}</h2>"
     html += "<table style='border-collapse:collapse; width:100%; margin-top:10px;'>"
@@ -551,6 +578,8 @@ def create_stock_table(title, stock_dict, include_buy_prices=True):
         html += "<th style='padding:8px;'>Stop Limit</th>"
     if has_shares:
         html += "<th style='padding:8px;'>Gain / Loss ($)</th>"
+    if has_alerts:
+        html += "<th style='padding:8px;'>Alert Target</th>"
     html += "</tr>"
 
     for company, stock in sorted_stocks.items():
@@ -601,13 +630,45 @@ def create_stock_table(title, stock_dict, include_buy_prices=True):
             else:
                 html += "<td style='padding:8px;'>—</td>"
 
+        if has_alerts:
+            ticker     = stock.get("Ticker", "")
+            alert_cfg  = price_alerts.get(ticker)
+            cur        = stock.get("Price")
+            if alert_cfg and isinstance(cur, (int, float)):
+                target    = alert_cfg["target"]
+                direction = alert_cfg["direction"]
+                pct_away  = (cur - target) / target * 100
+                if direction == "below":
+                    if cur <= target:
+                        cell_style = "color:green; font-weight:bold;"
+                        label = f"✅ ${target:.2f} TRIGGERED"
+                    elif pct_away <= 10:
+                        cell_style = "color:#f97316; font-weight:bold;"
+                        label = f"${target:.2f} ↓  {pct_away:.1f}% above"
+                    else:
+                        cell_style = "color:#64748b;"
+                        label = f"${target:.2f} ↓  {pct_away:.1f}% above"
+                else:
+                    if cur >= target:
+                        cell_style = "color:green; font-weight:bold;"
+                        label = f"✅ ${target:.2f} TRIGGERED"
+                    elif abs(pct_away) <= 10:
+                        cell_style = "color:#f97316; font-weight:bold;"
+                        label = f"${target:.2f} ↑  {abs(pct_away):.1f}% below"
+                    else:
+                        cell_style = "color:#64748b;"
+                        label = f"${target:.2f} ↑  {abs(pct_away):.1f}% below"
+                html += f"<td style='padding:8px; text-align:center; {cell_style}'>{label}</td>"
+            else:
+                html += "<td style='padding:8px; text-align:center; color:#94a3b8;'>—</td>"
+
         html += "</tr>"
 
     html += "</table>"
     return html
 
 def create_email_content(portfolio_data, watchlist_data, focus_data, market_gainers, market_losers,
-                         portfolio_news, watchlist_news, upcoming_earnings, ai_commentary=None):
+                         portfolio_news, upcoming_earnings, ai_commentary=None):
     now_str      = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     summary_html = create_summary_section(portfolio_data, watchlist_data, market_gainers, market_losers, upcoming_earnings)
 
@@ -627,7 +688,6 @@ def create_email_content(portfolio_data, watchlist_data, focus_data, market_gain
     html += create_stock_table("Your Portfolio", portfolio_data, include_buy_prices=True)
     html += create_stock_table("Watchlist (Potential Buys)", watchlist_data, include_buy_prices=False)
     html += create_collapsible_news_section("📈 Portfolio Stock News", portfolio_news)
-    html += create_collapsible_news_section("📈 Watchlist Stock News", watchlist_news)
 
     html += "<h2 style='margin-top:40px;'>📰 Company Digest</h2>"
     for company, headlines in focus_data.items():
@@ -662,7 +722,6 @@ def job():
     watchlist_data = {c: get_stock_data(t, c) for c, t in watchlist.items()}
 
     portfolio_news            = get_stock_news(tickers)
-    watchlist_news            = get_stock_news(watchlist)
     focus_data                = get_focus_news()
     market_gainers, market_losers = get_market_top_movers()
     upcoming_earnings         = get_upcoming_earnings(tickers)
@@ -671,8 +730,7 @@ def job():
     email_content = create_email_content(
         portfolio_data, watchlist_data, focus_data,
         market_gainers, market_losers,
-        portfolio_news, watchlist_news,
-        upcoming_earnings, ai_commentary,
+        portfolio_news, upcoming_earnings, ai_commentary,
     )
     send_email(email_content)
     print("Email sent successfully!")
