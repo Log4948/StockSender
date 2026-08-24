@@ -154,9 +154,11 @@ TOP_TICKERS = [
 price_alerts = {
     "QBTS": {"target": 17.00,  "direction": "below", "label": "D-Wave"},
     "WMT":  {"target": 110.00, "direction": "above", "label": "Walmart"},
+    "RKLB":  {"target": 63.00, "direction": "below", "label": "Rocket Lab"},
+    "MU":  {"target": 1000.00, "direction": "above", "label": "Micron"},
     # Add more alerts here, e.g.:
-    # "MU":   {"target": 80.00,  "direction": "below", "label": "Micron"},
-    # "NVDA": {"target": 160.00, "direction": "below", "label": "Nvidia"},
+    "MU":   {"target": 850.00,  "direction": "below", "label": "Micron"},
+    "NVDA": {"target": 200.00, "direction": "below", "label": "Nvidia"},
 }
 
 ALERT_STATE_FILE = Path("alert_state.json")
