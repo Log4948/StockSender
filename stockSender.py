@@ -44,7 +44,7 @@ tickers = {
 }
 
 buy_prices = {
-    "Nvidia":   187.52,
+    "Nvidia":   205,
     "Google":   320.08,
     "QQQ":      603.0,
     "VYM":      153.0,
