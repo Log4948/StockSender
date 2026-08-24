@@ -68,15 +68,15 @@ stop_limits = {
 }
 
 share_counts = {
-    "Nvidia":   34,
-    "Micron":   0,
-    "Google":   15,
-    "On Cloud": 0,
-    "EPD":      0,
-    "QQQ":      10,
-    "VYM":      80,
-    "VTI":      35,
-    "Walmart":  0,
+    "Nvidia":   42,
+    "Micron":   14,
+    "Google":   51,
+    "On Cloud": 322,
+    "EPD":      150,
+    "QQQ":      27,
+    "VYM":      113,
+    "VTI":      49,
+    "Walmart":  100,
 }
 
 dividend_yields = {
