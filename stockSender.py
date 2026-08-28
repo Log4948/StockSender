@@ -155,13 +155,19 @@ TOP_TICKERS = [
 # direction "below": fires when price drops TO or BELOW target (buy opportunity)
 # direction "above": fires when price rises TO or ABOVE target (sell / breakout)
 # Each alert fires once per calendar day per target — no repeat spam.
-price_alerts = {
-    "WMT":  {"target": 110.00,  "direction": "above", "label": "Walmart"},
-    "RKLB": {"target": 63.00,   "direction": "below", "label": "Rocket Lab"},
-    "MU":   {"target": 1000.00, "direction": "above", "label": "Micron"},
-    "NVDA": {"target": 200.00,  "direction": "below", "label": "Nvidia"},
-    # Note: only one alert per ticker — last one wins if you add duplicates
-}
+price_alerts = [
+    # D-Wave — text if it drops below buy price or pops above $18
+    {"ticker": "QBTS", "target": 16.50, "direction": "below", "label": "D-Wave"},
+    {"ticker": "QBTS", "target": 18.00, "direction": "above", "label": "D-Wave"},
+    # On Cloud — two downside levels to watch
+    {"ticker": "ONON", "target": 72.00, "direction": "below", "label": "On Cloud"},
+    {"ticker": "ONON", "target": 71.00, "direction": "below", "label": "On Cloud"},
+    # Other alerts
+    {"ticker": "WMT",  "target": 110.00,  "direction": "above", "label": "Walmart"},
+    {"ticker": "RKLB", "target": 63.00,   "direction": "below", "label": "Rocket Lab"},
+    {"ticker": "MU",   "target": 1000.00, "direction": "above", "label": "Micron"},
+    {"ticker": "NVDA", "target": 200.00,  "direction": "below", "label": "Nvidia"},
+]
 
 ALERT_STATE_FILE  = Path("alert_state.json")
 DAILY_SEND_FILE   = Path("daily_send_state.json")
@@ -357,7 +363,8 @@ def check_price_alerts():
     today_fired = state.get(today, {})
 
     triggered = []
-    for ticker, cfg in price_alerts.items():
+    for cfg in price_alerts:
+        ticker    = cfg["ticker"]
         alert_key = f"{ticker}_{cfg['target']}_{cfg['direction']}"
         if alert_key in today_fired:
             continue
@@ -566,10 +573,11 @@ def create_stock_table(title, stock_dict, include_buy_prices=True):
 
     has_shares      = include_buy_prices and any(share_counts.get(c, 0) > 0 for c in stock_dict)
     has_stop_limits = include_buy_prices and any(stop_limits.get(c) is not None for c in stock_dict)
-    # show alert distance column on watchlist only
-    has_alerts      = (not include_buy_prices) and any(
-        price_alerts.get(s.get("Ticker", "")) for s in stock_dict.values()
-    )
+    # build ticker → [alerts] lookup from list, show column if any stock in this table has alerts
+    alerts_by_ticker = {}
+    for cfg in price_alerts:
+        alerts_by_ticker.setdefault(cfg["ticker"], []).append(cfg)
+    has_alerts = any(alerts_by_ticker.get(s.get("Ticker", "")) for s in stock_dict.values())
 
     html  = f"<h2 style='color:#1E293B; margin-top:40px;'>{title}</h2>"
     html += "<table style='border-collapse:collapse; width:100%; margin-top:10px;'>"
@@ -636,34 +644,37 @@ def create_stock_table(title, stock_dict, include_buy_prices=True):
                 html += "<td style='padding:8px;'>—</td>"
 
         if has_alerts:
-            ticker     = stock.get("Ticker", "")
-            alert_cfg  = price_alerts.get(ticker)
-            cur        = stock.get("Price")
-            if alert_cfg and isinstance(cur, (int, float)):
-                target    = alert_cfg["target"]
-                direction = alert_cfg["direction"]
-                pct_away  = (cur - target) / target * 100
-                if direction == "below":
-                    if cur <= target:
-                        cell_style = "color:green; font-weight:bold;"
-                        label = f"✅ ${target:.2f} TRIGGERED"
-                    elif pct_away <= 10:
-                        cell_style = "color:#f97316; font-weight:bold;"
-                        label = f"${target:.2f} ↓  {pct_away:.1f}% above"
+            ticker      = stock.get("Ticker", "")
+            alert_cfgs  = alerts_by_ticker.get(ticker, [])
+            cur         = stock.get("Price")
+            if alert_cfgs and isinstance(cur, (int, float)):
+                parts = []
+                for ac in alert_cfgs:
+                    target    = ac["target"]
+                    direction = ac["direction"]
+                    pct_away  = (cur - target) / target * 100
+                    if direction == "below":
+                        if cur <= target:
+                            s = "color:green; font-weight:bold;"
+                            t = f"✅ ${target:.2f} ↓ TRIGGERED"
+                        elif pct_away <= 10:
+                            s = "color:#f97316; font-weight:bold;"
+                            t = f"${target:.2f} ↓ {pct_away:.1f}% above"
+                        else:
+                            s = "color:#64748b;"
+                            t = f"${target:.2f} ↓ {pct_away:.1f}% above"
                     else:
-                        cell_style = "color:#64748b;"
-                        label = f"${target:.2f} ↓  {pct_away:.1f}% above"
-                else:
-                    if cur >= target:
-                        cell_style = "color:green; font-weight:bold;"
-                        label = f"✅ ${target:.2f} TRIGGERED"
-                    elif abs(pct_away) <= 10:
-                        cell_style = "color:#f97316; font-weight:bold;"
-                        label = f"${target:.2f} ↑  {abs(pct_away):.1f}% below"
-                    else:
-                        cell_style = "color:#64748b;"
-                        label = f"${target:.2f} ↑  {abs(pct_away):.1f}% below"
-                html += f"<td style='padding:8px; text-align:center; {cell_style}'>{label}</td>"
+                        if cur >= target:
+                            s = "color:green; font-weight:bold;"
+                            t = f"✅ ${target:.2f} ↑ TRIGGERED"
+                        elif abs(pct_away) <= 10:
+                            s = "color:#f97316; font-weight:bold;"
+                            t = f"${target:.2f} ↑ {abs(pct_away):.1f}% below"
+                        else:
+                            s = "color:#64748b;"
+                            t = f"${target:.2f} ↑ {abs(pct_away):.1f}% below"
+                    parts.append(f"<span style='{s}'>{t}</span>")
+                html += f"<td style='padding:8px; text-align:center;'>{'<br>'.join(parts)}</td>"
             else:
                 html += "<td style='padding:8px; text-align:center; color:#94a3b8;'>—</td>"
 
