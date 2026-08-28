@@ -2,8 +2,9 @@ name: Daily Market Email
 
 on:
   schedule:
-    - cron: '30 14 * * 1-5'  # 10:30 AM ET (EDT) / 9:30 AM ET (EST) on weekdays
-  workflow_dispatch:           # lets you trigger it manually from GitHub UI
+    - cron: '47 14 * * 1-5'   # 10:47 AM ET (EDT) / 9:47 AM ET (EST) — primary
+    - cron: '23 16 * * 1-5'   # 12:23 PM ET (EDT) / 11:23 AM ET (EST) — backup
+  workflow_dispatch:            # manual trigger from GitHub UI
 
 jobs:
   send:
@@ -25,3 +26,12 @@ jobs:
           EMAIL_PASSWORD:    ${{ secrets.EMAIL_PASSWORD }}
           TO_EMAIL:          ${{ secrets.TO_EMAIL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      # Commit daily_send_state.json so the backup run knows the primary already fired
+      - name: Save send state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add daily_send_state.json
+          git diff --cached --quiet || git commit -m "chore: update daily send state [skip ci]"
+          git push

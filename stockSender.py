@@ -41,6 +41,7 @@ tickers = {
     "VYM":      "VYM",
     "VTI":      "VTI",
     "Walmart":  "WMT",
+    "D-Wave":   "QBTS",
 }
 
 buy_prices = {
@@ -53,6 +54,7 @@ buy_prices = {
     "On Cloud": 31.025,
     "EPD":      38.98,
     "Walmart":  103.37,
+    "D-Wave":   17.00,
 }
 
 stop_limits = {
@@ -65,6 +67,7 @@ stop_limits = {
     "VYM":      None,
     "VTI":      None,
     "Walmart":  None,
+    "D-Wave":   None,
 }
 
 share_counts = {
@@ -77,6 +80,7 @@ share_counts = {
     "VYM":      113,
     "VTI":      49,
     "Walmart":  100,
+    "D-Wave":   1176,
 }
 
 dividend_yields = {
@@ -89,6 +93,7 @@ dividend_yields = {
     "VYM":      "~2.80%",
     "VTI":      "~1.30%",
     "Walmart":  "~1.0%",
+    "D-Wave":   "-",
 }
 
 watchlist = {
@@ -100,7 +105,6 @@ watchlist = {
     "LuluLemon":   "LULU",
     "Bitcoin ETF": "BITO",
     # Existing watchlist
-    "D-Wave":          "QBTS",
     "Tesla":           "TSLA",
     "Broadcom":        "AVGO",
     "AMD":             "AMD",
@@ -152,16 +156,15 @@ TOP_TICKERS = [
 # direction "above": fires when price rises TO or ABOVE target (sell / breakout)
 # Each alert fires once per calendar day per target — no repeat spam.
 price_alerts = {
-    "QBTS": {"target": 17.00,  "direction": "below", "label": "D-Wave"},
-    "WMT":  {"target": 110.00, "direction": "above", "label": "Walmart"},
-    "RKLB":  {"target": 63.00, "direction": "below", "label": "Rocket Lab"},
-    "MU":  {"target": 1000.00, "direction": "above", "label": "Micron"},
-    # Add more alerts here, e.g.:
-    "MU":   {"target": 850.00,  "direction": "below", "label": "Micron"},
-    "NVDA": {"target": 200.00, "direction": "below", "label": "Nvidia"},
+    "WMT":  {"target": 110.00,  "direction": "above", "label": "Walmart"},
+    "RKLB": {"target": 63.00,   "direction": "below", "label": "Rocket Lab"},
+    "MU":   {"target": 1000.00, "direction": "above", "label": "Micron"},
+    "NVDA": {"target": 200.00,  "direction": "below", "label": "Nvidia"},
+    # Note: only one alert per ticker — last one wins if you add duplicates
 }
 
-ALERT_STATE_FILE = Path("alert_state.json")
+ALERT_STATE_FILE  = Path("alert_state.json")
+DAILY_SEND_FILE   = Path("daily_send_state.json")
 
 
 # --- HELPERS ---
@@ -719,7 +722,22 @@ def send_email(content):
 
 
 # --- JOBS ---
+def _already_sent_today():
+    today = datetime.today().strftime("%Y-%m-%d")
+    if DAILY_SEND_FILE.exists():
+        with open(DAILY_SEND_FILE) as f:
+            return json.load(f).get("last_sent") == today
+    return False
+
+def _mark_sent_today():
+    with open(DAILY_SEND_FILE, "w") as f:
+        json.dump({"last_sent": datetime.today().strftime("%Y-%m-%d")}, f)
+
 def job():
+    if _already_sent_today():
+        print("Already sent today — skipping duplicate run.")
+        return
+
     portfolio_data = {c: get_stock_data(t, c) for c, t in tickers.items()}
     watchlist_data = {c: get_stock_data(t, c) for c, t in watchlist.items()}
 
@@ -735,6 +753,7 @@ def job():
         portfolio_news, upcoming_earnings, ai_commentary,
     )
     send_email(email_content)
+    _mark_sent_today()
     print("Email sent successfully!")
 
 def alert_job():
