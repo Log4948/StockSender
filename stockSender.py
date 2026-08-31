@@ -159,9 +159,8 @@ price_alerts = [
     # D-Wave — text if it drops below buy price or pops above $18
     {"ticker": "QBTS", "target": 16.50, "direction": "below", "label": "D-Wave"},
     {"ticker": "QBTS", "target": 18.00, "direction": "above", "label": "D-Wave"},
-    # On Cloud — two downside levels to watch
-    {"ticker": "ONON", "target": 72.00, "direction": "below", "label": "On Cloud"},
-    {"ticker": "ONON", "target": 71.00, "direction": "below", "label": "On Cloud"},
+    # On Cloud — alert if it breaks below $27
+    {"ticker": "ONON", "target": 27.00, "direction": "below", "label": "On Cloud"},
     # Other alerts
     {"ticker": "WMT",  "target": 110.00,  "direction": "above", "label": "Walmart"},
     {"ticker": "RKLB", "target": 63.00,   "direction": "below", "label": "Rocket Lab"},
