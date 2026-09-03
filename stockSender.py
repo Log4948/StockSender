@@ -171,6 +171,33 @@ price_alerts = [
 ALERT_STATE_FILE  = Path("alert_state.json")
 DAILY_SEND_FILE   = Path("daily_send_state.json")
 
+# Second copy of the state files, persisted via the Actions cache. The git commit
+# of state can fail (push races, rebase trouble) and a lost state file means the
+# backup run re-sends. The cache copy is written independently, so state survives
+# even when the push doesn't. Reads take the union — "already sent/fired" wins —
+# so a stale copy can never cause a duplicate. Absent locally; then it's a no-op.
+STATE_CACHE_DIR   = Path(".state-cache")
+
+
+def _read_json(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def _write_state(path, data):
+    """Write a state file to both the repo copy and the cache copy."""
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+    try:
+        STATE_CACHE_DIR.mkdir(exist_ok=True)
+        with open(STATE_CACHE_DIR / path.name, "w") as f:
+            json.dump(data, f, indent=2)
+    except OSError as e:
+        print(f"Warning: could not write cache copy of {path.name}: {e}")
+
 
 # --- HELPERS ---
 def fetch_quote(ticker):
@@ -344,14 +371,17 @@ def get_upcoming_earnings(portfolio_tickers):
 
 # --- PRICE ALERTS ---
 def _load_alert_state():
-    if ALERT_STATE_FILE.exists():
-        with open(ALERT_STATE_FILE) as f:
-            return json.load(f)
-    return {}
+    state = _read_json(ALERT_STATE_FILE) or {}
+    # Fold in anything the cache copy knows about but the repo copy lost. An alert
+    # recorded in either copy counts as fired, so a failed push can't re-fire it.
+    for day, fired in (_read_json(STATE_CACHE_DIR / ALERT_STATE_FILE.name) or {}).items():
+        state.setdefault(day, {}).update(
+            {k: v for k, v in fired.items() if k not in state[day]}
+        )
+    return state
 
 def _save_alert_state(state):
-    with open(ALERT_STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+    _write_state(ALERT_STATE_FILE, state)
 
 def check_price_alerts():
     if not price_alerts:
@@ -734,14 +764,15 @@ def send_email(content):
 # --- JOBS ---
 def _already_sent_today():
     today = datetime.today().strftime("%Y-%m-%d")
-    if DAILY_SEND_FILE.exists():
-        with open(DAILY_SEND_FILE) as f:
-            return json.load(f).get("last_sent") == today
-    return False
+    # Either copy claiming today's send is enough — better a missed backup send
+    # than a duplicate.
+    return any(
+        (_read_json(p) or {}).get("last_sent") == today
+        for p in (DAILY_SEND_FILE, STATE_CACHE_DIR / DAILY_SEND_FILE.name)
+    )
 
 def _mark_sent_today():
-    with open(DAILY_SEND_FILE, "w") as f:
-        json.dump({"last_sent": datetime.today().strftime("%Y-%m-%d")}, f)
+    _write_state(DAILY_SEND_FILE, {"last_sent": datetime.today().strftime("%Y-%m-%d")})
 
 def job():
     if _already_sent_today():

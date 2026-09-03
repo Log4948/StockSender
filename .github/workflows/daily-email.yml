@@ -2,8 +2,10 @@ name: Daily Market Email
 
 on:
   schedule:
-    - cron: '47 14 * * 1-5'   # 10:47 AM ET (EDT) / 9:47 AM ET (EST) — primary
-    - cron: '23 16 * * 1-5'   # 12:23 PM ET (EDT) / 11:23 AM ET (EST) — backup
+    # GitHub cron is UTC and does not follow DST, so these are correct during
+    # CDT (Mar–Nov) and run an hour early during CST (Nov–Mar).
+    - cron: '0 14 * * 1-5'    # 9:00 AM CT (CDT) / 8:00 AM CT (CST) — primary
+    - cron: '0 15 * * 1-5'    # 10:00 AM CT (CDT) / 9:00 AM CT (CST) — backup
   workflow_dispatch:            # manual trigger from GitHub UI
 
 jobs:
@@ -16,6 +18,15 @@ jobs:
         with:
           python-version: '3.11'
 
+      # Cache copy of the send state — survives a failed state push, so the
+      # backup run still knows the primary already sent.
+      - name: Restore send state cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .state-cache
+          key: daily-send-${{ github.run_id }}
+          restore-keys: daily-send-
+
       - name: Install dependencies
         run: pip install requests anthropic
 
@@ -27,12 +38,38 @@ jobs:
           TO_EMAIL:          ${{ secrets.TO_EMAIL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
-      # Commit daily_send_state.json so the backup run knows the primary already fired
+      # Persist the send state so the backup run knows the primary already fired.
+      # The cache copy is saved unconditionally below; this commit is the copy
+      # that survives cache eviction. It must not fail the run — by the time it
+      # runs the email has already gone out.
       - name: Save send state
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main
           git add daily_send_state.json
-          git diff --cached --quiet || git commit -m "chore: update daily send state [skip ci]"
-          git push
+          if git diff --cached --quiet; then
+            echo "No send state change to commit."
+            exit 0
+          fi
+          git commit -m "chore: update daily send state [skip ci]"
+          for attempt in 1 2 3; do
+            # --autostash: the script may leave other files dirty, which would
+            # otherwise abort the rebase before it starts.
+            if git pull --rebase --autostash origin main && git push; then
+              exit 0
+            fi
+            # A conflicted rebase would leave the next attempt stuck on
+            # "rebase in progress"; clear it before retrying.
+            git rebase --abort 2>/dev/null || true
+            echo "Push attempt $attempt failed; retrying..."
+            sleep 5
+          done
+          echo "::warning::Could not push daily_send_state.json; relying on the cache copy."
+
+      - name: Save send state cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .state-cache
+          key: daily-send-${{ github.run_id }}

@@ -16,6 +16,15 @@ jobs:
         with:
           python-version: '3.11'
 
+      # Cache copy of the alert state — survives a failed state push, so an
+      # alert that already fired today can't fire a second time.
+      - name: Restore alert state cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .state-cache
+          key: alert-state-${{ github.run_id }}
+          restore-keys: alert-state-
+
       - name: Install dependencies
         run: pip install requests anthropic
 
@@ -27,12 +36,37 @@ jobs:
           TO_EMAIL:        ${{ secrets.TO_EMAIL }}
           PHONE_SMS_EMAIL: ${{ secrets.PHONE_SMS_EMAIL }}
 
-      # Commit alert_state.json back so each run remembers what already fired today
+      # Persist what already fired today. The cache copy is saved unconditionally
+      # below; this commit is the copy that survives cache eviction. It must not
+      # fail the run — by the time it runs the alerts have already gone out.
       - name: Save alert state
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main
           git add alert_state.json
-          git diff --cached --quiet || git commit -m "chore: update alert state [skip ci]"
-          git push
+          if git diff --cached --quiet; then
+            echo "No alert state change to commit."
+            exit 0
+          fi
+          git commit -m "chore: update alert state [skip ci]"
+          for attempt in 1 2 3; do
+            # --autostash: the script may leave other files dirty, which would
+            # otherwise abort the rebase before it starts.
+            if git pull --rebase --autostash origin main && git push; then
+              exit 0
+            fi
+            # A conflicted rebase would leave the next attempt stuck on
+            # "rebase in progress"; clear it before retrying.
+            git rebase --abort 2>/dev/null || true
+            echo "Push attempt $attempt failed; retrying..."
+            sleep 5
+          done
+          echo "::warning::Could not push alert_state.json; relying on the cache copy."
+
+      - name: Save alert state cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .state-cache
+          key: alert-state-${{ github.run_id }}

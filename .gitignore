@@ -3,6 +3,9 @@ config.py
 *.env
 .env
 
+# Cache copy of the state files, persisted by the Actions cache
+.state-cache/
+
 # Python
 __pycache__/
 *.pyc
